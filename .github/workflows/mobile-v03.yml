@@ -1,0 +1,69 @@
+name: Seans 0.3 mobile acceptance
+on:
+  push:
+    branches: [fix/mobile-v03]
+    paths: ['docs/**', 'tests/**', 'scripts/upgrade-mobile-v03.py', 'scripts/prepare-icon.py', '.github/workflows/mobile-v03.yml']
+permissions:
+  contents: write
+concurrency:
+  group: seans-mobile-v03-preview
+  cancel-in-progress: false
+jobs:
+  acceptance:
+    if: github.repository == 'KADARstudio/seans' && github.repository_id == '1376451444'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify identity and prepare reviewed source
+        run: |
+          node scripts/check-project.cjs
+          python3 scripts/upgrade-mobile-v03.py
+          python3 scripts/prepare-icon.py
+          node scripts/check-project.cjs
+          for file in docs/*.js; do node --check "$file"; done
+      - name: Run controller, tournament, history and actual media error tests
+        run: |
+          set -euo pipefail
+          mkdir -p test-results
+          npm test | tee test-results/unit-tests.tap
+      - name: Install actual Chromium and WebKit engines
+        run: |
+          python3 -m pip install playwright==1.57.0
+          python3 -m playwright install --with-deps chromium webkit
+      - name: Check rewatch, visible motion, media progress and full-height phone layouts
+        run: python3 tests/mobile.py
+      - name: Save tested runtime files only to preview branch
+        run: |
+          test "$GITHUB_REPOSITORY" = 'KADARstudio/seans'
+          test "$GITHUB_REPOSITORY_ID" = '1376451444'
+          test "$GITHUB_REF_NAME" = 'fix/mobile-v03'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/app.js docs/core.js docs/index.html docs/icon.png
+          if ! git diff --cached --quiet; then
+            git commit -m 'Save mobile 0.3 runtime after actual Chromium and WebKit checks [skip ci]'
+            git pull --rebase origin fix/mobile-v03
+            git push origin HEAD:fix/mobile-v03
+          fi
+          echo "SEANS_PUBLIC_URL=https://raw.githack.com/KADARstudio/seans/$(git rev-parse HEAD)/docs/index.html" >> "$GITHUB_ENV"
+      - name: Verify immutable public preview including real catalogue and media
+        run: python3 tests/mobile.py
+      - name: Preserve exact app and test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seans-v03-source-and-evidence
+          path: |
+            docs/
+            tests/
+            scripts/
+            test-results/
+            package.json
+            project.json
+            README.md
+            AGENTS.md
+          retention-days: 7

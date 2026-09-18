@@ -18,7 +18,7 @@ with sync_playwright() as p:
   browser=getattr(p,engine).launch()
   for mode,url in urls:
    row={'engine':engine,'browserVersion':browser.version,'mode':mode,'url':url,'passed':False,'checks':[],'errors':[],'physicalDevice':False};rows.append(row)
-   ctx=browser.new_context(viewport={'width':390,'height':844},is_mobile=True,has_touch=True,locale='pl-PL',timezone_id='Europe/Warsaw',accept_downloads=True)
+   ctx=browser.new_context(viewport={'width':390,'height':664},is_mobile=True,has_touch=True,locale='pl-PL',timezone_id='Europe/Warsaw',accept_downloads=True)
    page=ctx.new_page();page.on('pageerror',lambda e,r=row:r['errors'].append(str(e)))
    def check(name,condition=True):
     assert condition,name
@@ -32,36 +32,50 @@ with sync_playwright() as p:
      assert page.locator('#phish-dest').input_value()==url
      page.get_by_role('button',name='Open the page',exact=True).click();row['hostingConfirmation']=True
     page.locator('[data-service="netflix"]').wait_for(timeout=40000)
-    check('Version 0.2.1','0.2.1' in page.locator('.beta').inner_text())
+    check('Version 0.3.0','0.3.0' in page.locator('.beta').inner_text())
     check('Sound off by default',page.evaluate('!audioEnabled'))
     check('Polish subscription catalogue',page.evaluate('catalogue.country==="PL" && catalogue.monetization==="FLATRATE" && catalogue.movies.length>=50'))
-    row['catalogueCount']=page.evaluate('catalogue.movies.length');row['catalogueFetchedAt']=page.evaluate('catalogue.fetchedAt')
-    click('[data-service="netflix"]');click('[data-rounds="10"]');click('[data-action="start"]')
+    row['catalogueCount']=page.evaluate('catalogue.movies.length');row['catalogueFetchedAt']=page.evaluate('catalogue.fetchedAt');row['coverage']=page.evaluate('catalogue.coverage')
+    click('[data-service="netflix"]')
+    for width,height in [(390,664),(375,548),(320,480)]:
+     page.set_viewport_size({'width':width,'height':height})
+     check(f'Start fits {width}x{height}',page.evaluate('document.querySelector("#app").scrollHeight<=document.querySelector("#app").clientHeight+1'))
+    page.set_viewport_size({'width':390,'height':664});click('[data-rounds="10"]');click('[data-action="start"]')
     check('Two movie cards',page.locator('.movie').count()==2)
     page.evaluate('window.kept=document.querySelector(".movie")')
-    click('[data-pick="0"]');idle()
+    page.evaluate('window.motionStarted=performance.now()');click('[data-pick="0"]');page.wait_for_function('!moving');check('Visible transition lasts at least 700ms',page.evaluate('performance.now()-motionStarted>=700'));idle()
     check('Winner stays in the same DOM node',page.evaluate('kept===document.querySelector(".movie") && game.completed===1'))
     page.locator('[data-pick="0"]').first.evaluate('el=>{el.click();el.click()}');idle()
     check('Double tap counted once',page.evaluate('game.completed===2 && session.events.length===2'))
     click('[data-action="undo"]');idle();check('Undo rolls back accounting',page.evaluate('game.completed===1 && session.events.length===1'))
-    click('[data-seen="1"]');idle();check('Seen is not a vote',page.evaluate('game.completed===1 && seen.length===1'))
+    before=page.evaluate('JSON.stringify(game)');click('[data-seen="1"]');idle();check('Seen preserves pair champion deck and vote count',page.evaluate('JSON.stringify(game)')==before and page.evaluate('seen.length===1'))
+    check('Watched movies remain in default pool',page.evaluate('currentPool().some(m=>m.id===seen[0])'))
     click('[data-action="undo"]');idle();check('Undo seen restores list',page.evaluate('seen.length===0'))
     click('[data-action="skip"]');idle();check('Skip has no vote',page.evaluate('game.completed===1 && game.champion===null'))
     click('[data-action="undo"]');idle();click('[data-detail]')
     check('Description dialog opens',page.locator('dialog').is_visible());click('[data-action="close"]')
-    click('[data-action="sound"]');page.wait_for_function('SeansSound.status().state==="running"')
-    click('[data-pick="0"]');idle();check('Opt-in Web Audio plays effects',page.evaluate('SeansSound.status().played>=1'))
+    click('[data-action="sound"]');page.wait_for_function('SeansSound.status().played>=1 && SeansSound.status().currentTime>0.03')
+    click('[data-pick="0"]');idle();check('HTML audio playback resolved and media time advanced',page.evaluate('SeansSound.status().played>=1 && SeansSound.status().currentTime>0.03 && !SeansSound.status().lastError'))
     click('[data-action="sound"]')
     try:
      page.wait_for_function('Array.from(document.querySelectorAll(".duel img")).some(i=>i.complete && i.naturalWidth>0)',timeout=12000);row['postersLoaded']=True
     except Exception:row['postersLoaded']=False
+    for width,height in [(390,664),(375,548),(320,480),(430,760),(844,390)]:
+     page.set_viewport_size({'width':width,'height':height})
+     check(f'Duel fits {width}x{height} without clipping',page.evaluate('document.documentElement.scrollWidth<=innerWidth && document.documentElement.scrollHeight<=innerHeight+1 && document.querySelector("#app").scrollHeight<=document.querySelector("#app").clientHeight+1 && [...document.querySelectorAll(".movie")].every(x=>x.scrollHeight<=x.clientHeight+1)'))
+     check(f'Primary touch targets at least 44px at {width}x{height}',page.evaluate('[...document.querySelectorAll(".pick,.movie-tools button,.duel-actions button")].every(x=>{const r=x.getBoundingClientRect();return r.height>=44 && r.width>=44 && r.bottom<=innerHeight})'))
+    page.set_viewport_size({'width':390,'height':664})
     page.screenshot(path=str(OUT/f'{engine}-{mode}-duel.png'),full_page=True)
     click('[data-action="finish"]');idle()
     check('Final statistics match votes',page.evaluate('screen==="winner" && journal.length===1 && journal[0].stats.decisions===2 && journal[0].stats.defeated===2'))
+    for width,height in [(390,664),(375,548),(320,480),(430,760)]:
+     page.set_viewport_size({'width':width,'height':height})
+     check(f'Winner fits {width}x{height}',page.evaluate('document.querySelector("#app").scrollHeight<=document.querySelector("#app").clientHeight+1 && document.querySelector(".winner-date").getBoundingClientRect().bottom<=innerHeight'))
+    page.set_viewport_size({'width':390,'height':664})
     page.screenshot(path=str(OUT/f'{engine}-{mode}-winner.png'),full_page=True)
     page.locator('[data-open]').first.evaluate('el=>{el.addEventListener("click",e=>e.preventDefault(),{once:true});el.click()}');page.wait_for_timeout(50)
     check('Opened is not watched',page.evaluate('!!journal[0].openedAt && !journal[0].watchedAt'))
-    click('[data-watched]');click('[data-score="4"]');click('[data-action="save"]')
+    click('[data-action="winner-details"]');click('[data-watched]');click('[data-score="4"]');click('[data-action="close"]');click('[data-action="save"]')
     check('Explicit watch, rating and saved movie',page.evaluate('!!journal[0].watchedAt && journal[0].score===4 && saved.length===1'))
     click('[data-action="library"]');check('History counters',page.locator('.library-stats strong').all_text_contents()[:3]==['1','1','1'])
     page.screenshot(path=str(OUT/f'{engine}-{mode}-history.png'),full_page=True)
@@ -92,7 +106,7 @@ with sync_playwright() as p:
    finally:ctx.close()
   browser.close()
 server.shutdown()
-report={'version':'0.2.1','testedAt':datetime.now(timezone.utc).isoformat(),'sourceCommit':os.environ.get('GITHUB_SHA'),'results':rows}
+report={'version':'0.3.0','testedAt':datetime.now(timezone.utc).isoformat(),'sourceCommit':os.environ.get('GITHUB_SHA'),'results':rows}
 (OUT/'browser-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
 print(json.dumps(report,ensure_ascii=False,indent=2))
 if not all(r['passed'] for r in rows):sys.exit(1)
