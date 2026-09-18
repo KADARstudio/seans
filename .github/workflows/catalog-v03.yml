@@ -1,0 +1,41 @@
+name: Seans 0.3 catalogue verification
+on:
+  push:
+    branches: [fix/mobile-v03]
+    paths: ['scripts/refresh_catalog.py', '.github/workflows/catalog-v03.yml']
+permissions:
+  contents: write
+concurrency:
+  group: seans-full-catalogue-preview
+  cancel-in-progress: false
+jobs:
+  catalogue:
+    if: github.repository == 'KADARstudio/seans' && github.repository_id == '1376451444'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check project identity
+        run: node scripts/check-project.cjs
+      - name: Fetch all available result pages without truncation
+        run: python3 scripts/refresh_catalog.py --if-stale
+      - name: Validate and publish only the catalogue to the preview branch
+        run: |
+          node scripts/check-project.cjs
+          test "$GITHUB_REPOSITORY" = 'KADARstudio/seans'
+          test "$GITHUB_REF_NAME" = 'fix/mobile-v03'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/catalog.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Store paginated PL catalogue with coverage audit [skip ci]'
+            git pull --rebase origin fix/mobile-v03
+            git push origin HEAD:fix/mobile-v03
+          fi
+      - name: Preserve catalogue evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seans-expanded-catalogue
+          path: docs/catalog.json
+          retention-days: 7
