@@ -11,24 +11,27 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - name: Check tested runtime hashes at the canonical public URL
+      - name: Check exact HTML and the versioned resources it references
         shell: python
         run: |
-          import urllib.request,hashlib,json,pathlib
+          import urllib.request,hashlib,json,pathlib,re
           base='https://raw.githack.com/KADARstudio/seans/main/docs/'
           expected={
             'index.html':'a0db75efb0aa5787fc3749e4e1cebed77d0dc8c40d99ec9b672be4bede88d98e',
-            'app.js':'0d13c5d4bb55be780d4b393fb61068432e922eee6ca8cd17e5af25a7827b0495',
-            'core.js':'cf781b7374c39b7be3daffe314349faade9a0f6c64384402a09052e9fdac13a8',
-            'sound-v02.js':'c992c1b75648515d1b6e5394509ab412aaa7944c2728f83d9205cd7795757cdb',
-            'mobile-v03.css':'5bb108003fd853ac8ccefc36849d08b5886f391547682d0ec2b021118ee9df25'
+            'app.js?v=030':'0d13c5d4bb55be780d4b393fb61068432e922eee6ca8cd17e5af25a7827b0495',
+            'core.js?v=030':'cf781b7374c39b7be3daffe314349faade9a0f6c64384402a09052e9fdac13a8',
+            'sound-v02.js?v=030':'c992c1b75648515d1b6e5394509ab412aaa7944c2728f83d9205cd7795757cdb',
+            'mobile-v03.css?v=030':'5bb108003fd853ac8ccefc36849d08b5886f391547682d0ec2b021118ee9df25'
           }
           report={'url':base+'index.html','testedRevision':'df35f66ae500483904e44962748ee796672f0ee0','files':[],'errors':[]}
+          html=''
           for name,digest in expected.items():
             try:
+              if name!='index.html':assert '"'+name+'"' in html,'Asset not referenced by actual page'
               req=urllib.request.Request(base+name,headers={'User-Agent':'Seans-Public-Availability-Check/0.3'})
               with urllib.request.urlopen(req,timeout=20) as response:
                 data=response.read();actual=hashlib.sha256(data).hexdigest()
+                if name=='index.html':html=data.decode('utf-8')
                 report['files'].append({'path':name,'httpStatus':response.status,'sha256':actual,'matchesTestedSource':actual==digest})
             except Exception as error:
               report['errors'].append({'path':name,'message':str(error)})
