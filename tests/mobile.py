@@ -17,9 +17,16 @@ with sync_playwright() as p:
  for engine in ['chromium','webkit']:
   browser=getattr(p,engine).launch()
   for mode,url in urls:
-   row={'engine':engine,'browserVersion':browser.version,'mode':mode,'url':url,'passed':False,'checks':[],'errors':[],'physicalDevice':False};rows.append(row)
+   row={'engine':engine,'browserVersion':browser.version,'mode':mode,'url':url,'passed':False,'checks':[],'errors':[],'hostingErrors':[],'physicalDevice':False};rows.append(row)
    ctx=browser.new_context(viewport={'width':390,'height':664},is_mobile=True,has_touch=True,locale='pl-PL',timezone_id='Europe/Warsaw',accept_downloads=True)
-   page=ctx.new_page();page.on('pageerror',lambda e,r=row:r['errors'].append(str(e)))
+   page=ctx.new_page()
+   def page_error(error,r=row,m=mode):
+    message=str(error)
+    # This host's confirmation screen runs its own advertising script. Log its
+    # CORS failures separately, without disabling CORS or hiding the evidence.
+    destination='hostingErrors' if m=='public' and '/srv.carbonads.net/ads/' in message else 'errors'
+    r[destination].append(message)
+   page.on('pageerror',page_error)
    def check(name,condition=True):
     assert condition,name
     row['checks'].append(name);print(engine,mode,'PASS',name,flush=True)
@@ -55,8 +62,9 @@ with sync_playwright() as p:
     click('[data-action="undo"]');idle();click('[data-detail]')
     check('Description dialog opens',page.locator('dialog').is_visible());click('[data-action="close"]')
     click('[data-action="sound"]');page.wait_for_function('SeansSound.status().played>=1 && SeansSound.status().currentTime>0.03')
-    click('[data-pick="0"]');idle();check('HTML audio playback resolved and media time advanced',page.evaluate('SeansSound.status().played>=1 && SeansSound.status().currentTime>0.03 && !SeansSound.status().lastError'))
-    click('[data-action="sound"]')
+    initial_played=page.evaluate('SeansSound.status().played')
+    click('[data-pick="0"]');idle();check('HTML audio playback resolved and media time advanced',page.evaluate('SeansSound.status().played')>initial_played and page.evaluate('SeansSound.status().currentTime>0.03 && !SeansSound.status().lastError'))
+    row['mediaPlayback']=page.evaluate('SeansSound.status()');click('[data-action="sound"]')
     try:
      page.wait_for_function('Array.from(document.querySelectorAll(".duel img")).some(i=>i.complete && i.naturalWidth>0)',timeout=12000);row['postersLoaded']=True
     except Exception:row['postersLoaded']=False
@@ -64,7 +72,7 @@ with sync_playwright() as p:
      page.set_viewport_size({'width':width,'height':height})
      check(f'Duel fits {width}x{height} without clipping',page.evaluate('document.documentElement.scrollWidth<=innerWidth && document.documentElement.scrollHeight<=innerHeight+1 && document.querySelector("#app").scrollHeight<=document.querySelector("#app").clientHeight+1 && [...document.querySelectorAll(".movie")].every(x=>x.scrollHeight<=x.clientHeight+1)'))
      check(f'Primary touch targets at least 44px at {width}x{height}',page.evaluate('[...document.querySelectorAll(".pick,.movie-tools button,.duel-actions button")].every(x=>{const r=x.getBoundingClientRect();return r.height>=44 && r.width>=44 && r.bottom<=innerHeight})'))
-    page.set_viewport_size({'width':390,'height':664})
+    page.set_viewport_size({'width':390,'height':664});page.wait_for_timeout(2700)
     page.screenshot(path=str(OUT/f'{engine}-{mode}-duel.png'),full_page=True)
     click('[data-action="finish"]');idle()
     check('Final statistics match votes',page.evaluate('screen==="winner" && journal.length===1 && journal[0].stats.decisions===2 && journal[0].stats.defeated===2'))
@@ -96,7 +104,7 @@ with sync_playwright() as p:
     check('Ten choices reach final',page.evaluate('game.completed===10 && screen==="winner"'))
     click('[data-action="more"]');idle();click('[data-pick="0"]');idle();click('[data-action="finish"]');idle()
     check('Continue without duplicate records',page.evaluate('journal.length===2 && journal[0].stats.decisions===11'))
-    check('No JavaScript errors',not row['errors']);row['passed']=True
+    check('No application JavaScript errors',not row['errors']);row['passed']=True
    except Exception as exc:
     row['failure']=str(exc);row['traceback']=traceback.format_exc()
     try:
