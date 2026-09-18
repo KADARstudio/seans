@@ -1,0 +1,45 @@
+name: Seans canonical URL verification
+on:
+  push:
+    branches: [fix/mobile-v03]
+    paths: ['.github/workflows/check-live-main.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    if: github.repository == 'KADARstudio/seans' && github.repository_id == '1376451444'
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Check tested runtime hashes at the canonical public URL
+        shell: python
+        run: |
+          import urllib.request,hashlib,json,pathlib
+          base='https://raw.githack.com/KADARstudio/seans/main/docs/'
+          expected={
+            'index.html':'a0db75efb0aa5787fc3749e4e1cebed77d0dc8c40d99ec9b672be4bede88d98e',
+            'app.js':'0d13c5d4bb55be780d4b393fb61068432e922eee6ca8cd17e5af25a7827b0495',
+            'core.js':'cf781b7374c39b7be3daffe314349faade9a0f6c64384402a09052e9fdac13a8',
+            'sound-v02.js':'c992c1b75648515d1b6e5394509ab412aaa7944c2728f83d9205cd7795757cdb',
+            'mobile-v03.css':'5bb108003fd853ac8ccefc36849d08b5886f391547682d0ec2b021118ee9df25'
+          }
+          report={'url':base+'index.html','testedRevision':'df35f66ae500483904e44962748ee796672f0ee0','files':[],'errors':[]}
+          for name,digest in expected.items():
+            try:
+              req=urllib.request.Request(base+name,headers={'User-Agent':'Seans-Public-Availability-Check/0.3'})
+              with urllib.request.urlopen(req,timeout=20) as response:
+                data=response.read();actual=hashlib.sha256(data).hexdigest()
+                report['files'].append({'path':name,'httpStatus':response.status,'sha256':actual,'matchesTestedSource':actual==digest})
+            except Exception as error:
+              report['errors'].append({'path':name,'message':str(error)})
+          report['passed']=not report['errors'] and len(report['files'])==len(expected) and all(f['matchesTestedSource'] for f in report['files'])
+          pathlib.Path('canonical-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
+          print(json.dumps(report,ensure_ascii=False,indent=2))
+          if not report['passed']:raise SystemExit(1)
+      - name: Preserve canonical delivery proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seans-canonical-delivery-proof
+          path: canonical-report.json
+          retention-days: 7
