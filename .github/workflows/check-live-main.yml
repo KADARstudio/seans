@@ -9,12 +9,25 @@ jobs:
   verify:
     if: github.repository == 'KADARstudio/seans' && github.repository_id == '1376451444'
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 4
     steps:
-      - name: Check exact HTML and the versioned resources it references
+      - name: Purge only Seans preview cache through the documented host API
         shell: python
         run: |
-          import urllib.request,hashlib,json,pathlib,re
+          import urllib.request,urllib.parse
+          # Documented at https://raw.githack.com/ (FAQ cache invalidation).
+          # Only our own published app; no repository files, accounts or settings.
+          base='https://raw.githack.com/KADARstudio/seans/main/docs/'
+          for name in ['index.html','app.js','core.js','sound-v02.js','mobile-v03.css','catalog.json']:
+            target=base+name
+            url='https://raw.githack.com/purge?url='+urllib.parse.quote(target,safe='')
+            req=urllib.request.Request(url,method='DELETE',headers={'User-Agent':'Seans-Public-Availability-Check/0.3'})
+            with urllib.request.urlopen(req,timeout=20) as response:
+              print(name,response.status,response.read(1000).decode('utf-8','replace'))
+      - name: Check exact HTML, referenced resources and live catalogue
+        shell: python
+        run: |
+          import urllib.request,hashlib,json,pathlib
           base='https://raw.githack.com/KADARstudio/seans/main/docs/'
           expected={
             'index.html':'a0db75efb0aa5787fc3749e4e1cebed77d0dc8c40d99ec9b672be4bede88d98e',
@@ -33,8 +46,13 @@ jobs:
                 data=response.read();actual=hashlib.sha256(data).hexdigest()
                 if name=='index.html':html=data.decode('utf-8')
                 report['files'].append({'path':name,'httpStatus':response.status,'sha256':actual,'matchesTestedSource':actual==digest})
-            except Exception as error:
-              report['errors'].append({'path':name,'message':str(error)})
+            except Exception as error:report['errors'].append({'path':name,'message':str(error)})
+          try:
+            req=urllib.request.Request(base+'catalog.json',headers={'User-Agent':'Seans-Public-Availability-Check/0.3'})
+            with urllib.request.urlopen(req,timeout=40) as response:catalogue=json.load(response)
+            assert catalogue['country']=='PL' and catalogue['monetization']=='FLATRATE' and len(catalogue['movies'])>=9000
+            report['catalogue']={'count':len(catalogue['movies']),'fetchedAt':catalogue['fetchedAt'],'coverage':catalogue['coverage']}
+          except Exception as error:report['errors'].append({'path':'catalog.json','message':str(error)})
           report['passed']=not report['errors'] and len(report['files'])==len(expected) and all(f['matchesTestedSource'] for f in report['files'])
           pathlib.Path('canonical-report.json').write_text(json.dumps(report,ensure_ascii=False,indent=2))
           print(json.dumps(report,ensure_ascii=False,indent=2))
