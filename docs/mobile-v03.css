@@ -1,0 +1,119 @@
+/* A viewport-sized app shell, not a long web page. Long lists/details scroll in their own panels. */
+html,body { height:100%; }
+body { overflow:hidden; }
+.shell { width:min(100%,850px); height:100vh; height:100dvh; margin:auto; display:flex; flex-direction:column;
+ padding:env(safe-area-inset-top,0px) max(12px,env(safe-area-inset-right,0px)) max(8px,env(safe-area-inset-bottom,0px)) max(12px,env(safe-area-inset-left,0px)); }
+header { height:60px; min-height:60px; margin:0 0 8px; flex:none; }
+header .brand { min-height:44px; font-size:27px; }
+.header-right { gap:6px; }
+.header-right .icon-btn, .icon-btn { min-width:44px; width:44px; min-height:44px; height:44px; }
+.mute-mark { left:21px;top:10px; }
+#app { min-height:0; flex:1; overflow:auto; overscroll-behavior:contain; scrollbar-width:thin; }
+#footer { display:none; }
+.primary,.secondary { min-height:48px; font-size:15px; border-radius:12px; }
+.text-btn { min-height:44px; font-size:13px; }
+.sound-test { width:100%;margin-top:12px; }
+.sound-toggle[data-error=true] { color:var(--warm);border-color:var(--warm); }
+#toast { bottom:calc(70px + env(safe-area-inset-bottom,0px)); max-width:calc(100% - 32px);pointer-events:none; }
+#sheet { max-height:calc(100dvh - 24px); overscroll-behavior:contain; }
+#sheet-content { padding-bottom:8px; }
+#sheet-content .primary { margin-top:16px; }
+#sheet .sheet-close { position:sticky;top:0;float:right;margin-top:4px; }
+#sheet .field { padding:12px; }
+#sheet select { min-height:40px; font-size:16px; }
+#sheet .filter-grid { grid-template-columns:1fr; }
+#sheet .rating-buttons button { min-height:44px;min-width:44px; }
+.coverage-list p { display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px; }
+.coverage-list span { color:var(--muted);text-align:right; }
+/* Start: keep the primary action visible without scrolling through filters. */
+body[data-screen=home] #app { overflow:hidden; }
+.home-screen { display:flex; flex-direction:column; gap:12px; height:100%;min-height:0;max-width:620px;margin:auto; }
+.home-intro { flex:none;padding-top:5px; }
+.home-intro h1 { font-size:clamp(28px,7.5vw,38px);letter-spacing:-1.3px;line-height:1.12;margin:9px 0 5px; }
+.home-intro h1 span { color:var(--lime); }
+.home-intro p { font-size:13px;color:var(--muted);margin:0; }
+.home-screen .section-label { margin:0 0 9px; font-size:14px; }
+.home-screen .service-grid { gap:9px; }
+.home-screen .service { min-height:76px; padding:15px 5px 8px; }
+.home-screen .service strong { font-size:14px; }
+.home-screen .service small { font-size:11px; }
+.home-screen .service .check { width:16px;height:16px;font-size:11px;top:5px;right:5px; }
+.filter-launch { width:100%; justify-content:space-between; padding:9px 14px; min-height:57px; flex:none;text-align:left; }
+.filter-launch small { display:block;font-size:11px;font-weight:400;color:var(--muted);margin-top:4px; }
+.filter-launch>span:last-child { font-size:27px;color:var(--lime); }
+.round-section { flex:none; }
+.segment { min-height:46px;font-size:16px; }
+.home-start { margin-top:auto; }
+.home-start .primary { min-height:54px; font-size:17px; }
+.home-start .help-line { margin:6px 0 0;font-size:11px; }
+.catalog-status { padding:0;display:flex;justify-content:center;align-items:center;gap:8px;min-height:44px;width:100%;font-size:10px;flex:none; }
+.home-screen .resume { min-height:44px;flex:none; }
+/* The duel is a grid with the remaining height allocated to the posters. */
+body[data-screen=duel] #app { display:grid;grid-template-rows:20px 4px 58px minmax(0,1fr) 52px 38px;gap:8px;overflow:hidden; }
+.duel-top { font-size:12px; }
+.progress { margin:0;height:4px; }
+.progress div { transition:width .7s ease; }
+.duel-title { padding-top:4px; }
+.duel-title h1 { font-size:clamp(20px,5.8vw,30px);margin:0 0 4px;line-height:1.12; }
+.duel-title p { margin:0;font-size:12px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.duel { min-height:0;height:100%;margin:0;padding:3px;gap:12px;align-items:stretch; }
+.movie { display:grid;grid-template-rows:minmax(70px,1fr) 23px 40px 20px 22px 50px 44px;gap:5px;min-height:0; }
+.movie .poster-button { min-height:0;height:100%;max-height:none; }
+.movie .poster-wrap { height:100%;width:100%;aspect-ratio:auto; }
+.movie .poster { object-fit:contain;background:#171b14; }
+.poster-fallback { font-size:20px; }
+.movie h2 { margin:0;min-height:0;font-size:16px;line-height:1.2;align-self:start; }
+.movie .movie-meta { min-height:0;white-space:nowrap;font-size:12px; }
+.movie .provider-tags { flex-wrap:nowrap;overflow:hidden;margin:0;min-height:0; }
+.provider-tag { white-space:nowrap;font-size:9px;overflow:hidden;text-overflow:ellipsis; }
+.streak { min-height:0;font-size:11px;align-items:center; }
+.movie .pick { min-height:50px;font-size:16px; }
+.movie-tools { display:grid;grid-template-columns:minmax(0,1fr) 48px;gap:5px;margin:0; }
+.movie-tools .text-btn { min-height:44px;border:1px solid var(--line);border-radius:10px;padding:4px 3px;font-size:12px; }
+.seen-toggle[aria-pressed=true] { color:var(--lime);border-color:#81994b;background:#d9fa7010; }
+.versus { top:calc((100% - 230px)/2);width:30px;height:30px;font-size:9px; }
+.duel-actions { margin:0;padding:0;border:0;display:grid;grid-template-columns:1fr 1fr 1.32fr;gap:8px; }
+.duel-actions .primary,.duel-actions .secondary { min-height:52px;height:100%;padding:6px;font-size:14px; }
+.duel-actions .finish { background:var(--lime);color:#11160a; }
+.duel-end { min-height:0;display:flex;justify-content:space-between;align-items:center;gap:6px;color:var(--muted);font-size:10px; }
+.duel-end .text-btn { font-size:10px;min-height:38px;padding:4px; }
+/* Result: description, ratings and extra providers belong in the details sheet. */
+body[data-screen=winner] #app { overflow:hidden; }
+.winner { height:100%;min-height:0;display:flex;flex-direction:column;gap:10px;padding:0;max-width:650px;margin:auto; }
+.winner-heading { flex:none;text-align:left; }
+.winner-heading h1 { font-size:30px;line-height:1.1;margin:7px 0 0; }
+.winner-hero { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.25fr);gap:18px;min-height:100px;flex:1; }
+.winner .poster-wrap { width:100%;height:100%;aspect-ratio:auto;margin:0; }
+.winner .poster { object-fit:contain;background:#171b14; }
+.winner-info { min-height:0;text-align:left;align-self:center; }
+.winner-info h2 { font-size:clamp(20px,5.7vw,30px);line-height:1.12;margin:0 0 9px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden; }
+.winner-info .movie-meta { font-size:12px; }
+.winner-info .provider-tags { justify-content:flex-start; }
+.winner-info .secondary { width:100%;padding:6px; }
+.winner .result-stats { margin:0;flex:none;width:100%;max-width:none; }
+.winner .result-stats>div { padding:9px 6px; }
+.winner .result-stats strong { font-size:20px; }
+.winner .result-stats span { font-size:10px; }
+.winner .stats-note { display:none; }
+.winner>.help-line { display:none; }
+.winner .watch-links { margin:0;gap:0;flex:none; }
+.watch-links .primary { min-height:52px;font-size:16px; }
+.watch-links .text-btn { margin:0;min-height:40px; }
+.winner-actions { margin:0;flex:none; }
+.winner-actions .secondary { font-size:14px; }
+.winner-bottom { margin:0;display:grid;grid-template-columns:1fr 1.3fr 1fr;gap:5px;flex:none; }
+.winner-bottom .text-btn { min-height:44px;padding:4px; }
+.winner-date { font-size:10px;margin:0;color:var(--muted);flex:none;line-height:1.3; }
+.library { padding-bottom:15px; }
+.library .text-btn,.row-actions .text-btn { min-height:44px; }
+@media(max-width:600px) { .beta { display:none; } header .brand-icon { margin-right:6px; } }
+@media(min-width:700px) and (min-height:700px) { .shell{padding-left:28px;padding-right:28px;}header{height:70px;min-height:70px;}.movie .poster{object-fit:contain;} }
+@media(max-height:700px) { .home-screen{gap:8px;}.home-intro p{display:none;}.home-screen .service{min-height:65px;}.home-intro h1{font-size:29px;}.home-intro .eyebrow{font-size:9px;}.home-screen .section-label{margin-bottom:6px;}.catalog-status{min-height:36px;}body[data-screen=duel] #app{grid-template-rows:18px 3px 47px minmax(0,1fr) 48px 32px;gap:6px;}.duel-title p{font-size:11px;}.movie{grid-template-rows:minmax(45px,1fr) 20px 36px 18px 18px 46px 44px;gap:4px;}.movie h2{font-size:15px;}.movie .pick{min-height:46px;}.duel-actions .primary,.duel-actions .secondary{min-height:48px;}.duel-end .text-btn{min-height:32px;}.winner{gap:8px;}.winner-heading h1{font-size:27px;}.winner-heading .eyebrow{font-size:9px;} }
+@media(max-height:590px) { header{height:52px;min-height:52px;margin-bottom:4px;}.home-screen{gap:6px;}.home-intro{padding:0;}.home-intro .eyebrow{display:none;}.home-intro h1{margin:5px 0;}.home-screen .service{min-height:59px;padding:13px 4px 4px;}.home-screen .service small{font-size:10px;}.home-screen .service-grid{gap:6px;}.home-screen .filter-launch{min-height:51px;padding:6px 12px;}.home-screen .section-label{font-size:12px;}.home-start .primary{min-height:48px;}.segment{min-height:44px;}.catalog-status{min-height:30px;font-size:9px;}.home-start .help-line{font-size:10px;}.movie{grid-template-rows:minmax(40px,1fr) 18px 34px 16px 16px 44px 44px;gap:3px;}.movie h2{font-size:14px;}.movie .pick{min-height:44px;font-size:15px;}.streak{font-size:10px;}.duel-title p{display:none;}body[data-screen=duel] #app{grid-template-rows:18px 3px 30px minmax(0,1fr) 46px 28px;gap:5px;}.duel-actions .primary,.duel-actions .secondary{min-height:46px;}.duel-end .text-btn{min-height:28px;}.winner{gap:6px;}.winner-heading .eyebrow{display:none;}.winner-info h2{font-size:20px;}.winner-info .provider-tags{display:none;}.winner-hero{gap:12px;}.winner .result-stats>div{padding:6px;}.winner .result-stats strong{font-size:17px;}.winner .result-stats span{font-size:9px;}.watch-links .primary{min-height:48px;}.winner-date{font-size:9px;}.winner-actions .secondary{min-height:44px;} }
+@media(max-width:350px){.shell{padding-left:10px;padding-right:10px;}.brand{font-size:24px!important;}.brand-icon{width:27px;height:27px;}.header-right{gap:4px;}.duel{gap:9px;}.movie .movie-tools{grid-template-columns:minmax(0,1fr) 44px;gap:4px;}.movie-tools .text-btn{font-size:11px;}.movie .pick{font-size:14px;}.duel-title h1{font-size:21px;}.home-screen .section-label small{font-size:10px;}.service[data-service=sky] strong{font-size:10px;} }
+@media(orientation:landscape) and (max-height:520px){body[data-screen=home] #app{overflow:auto;}.home-screen{height:auto;}.home-screen .platform-section{max-width:480px;}body[data-screen=duel] #app{grid-template-rows:3px minmax(0,1fr) 44px;gap:5px;}.duel-top,.duel-title,.duel-end{display:none;}.duel{grid-row:2;}.movie{grid-template-columns:minmax(0,1fr) minmax(0,1fr);grid-template-rows:18px 36px 16px minmax(0,1fr) 44px 44px;gap:3px 7px;}.movie .poster-button{grid-column:1;grid-row:1/7;}.movie .streak,.movie h2,.movie .movie-meta,.movie .provider-tags,.movie .pick,.movie .movie-tools{grid-column:2;}.movie .pick{min-height:44px;}.movie .provider-tags{align-self:start;}.versus{top:40%;}.duel-actions{grid-row:3;}.duel-actions .primary,.duel-actions .secondary{min-height:44px;}.winner{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:30px minmax(70px,1fr) 50px 44px;}.winner-heading{grid-column:1;grid-row:1;}.winner-heading h1{margin:0;font-size:24px;}.winner-hero{grid-column:1;grid-row:2/5;}.winner .result-stats{grid-column:2;grid-row:1/3;align-self:start;}.winner .watch-links{grid-column:2;grid-row:2;align-self:end;}.winner-actions{grid-column:2;grid-row:3;}.winner-bottom{grid-column:2;grid-row:4;}.winner-date{display:none;}.winner-info .provider-tags{display:none;} }
+/* Do not prevent text zoom. Extremely short viewports get an accessible scrollable fallback. */
+@media(max-height:360px){#app{overflow:auto!important;}.home-screen,.winner{height:auto;}.duel{min-height:240px;}body[data-screen=duel] #app{display:block;}.duel-actions{margin-top:10px;} }
+.sr-only { position:fixed;top:0;left:0; }
+@media(max-height:590px){.home-screen:has(.resume) .home-intro{display:none;}}
+@media(max-height:520px) and (orientation:portrait){.home-intro{display:none;}.home-screen:has(.resume) .round-section .section-label{display:none;}.home-screen{gap:5px;}}
