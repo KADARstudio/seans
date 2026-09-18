@@ -71,8 +71,9 @@ def main():
     for edge in data['edges']:
      n=edge['node'];observed[n['id']]=n;local.add(n['id'])
     print(provider['name'],'range',lo,hi,'request',pages,'range unique',len(local),'reported',expected,flush=True)
-    if after is None and expected>1800 and (lo is None or lo<hi):
-     low=1800 if lo is None else lo;high=dt.datetime.now(dt.timezone.utc).year+1 if hi is None else hi
+    if after is None and expected>1900 and (lo is None or lo<hi):
+     # The upstream catalogue uses year 0 for some undated titles.
+     low=0 if lo is None else lo;high=dt.datetime.now(dt.timezone.utc).year+1 if hi is None else hi
      if depth>=12:raise ValueError('Unexpected search depth')
      mid=(low+high)//2
      collect(low,mid,depth+1);collect(mid+1,high,depth+1)
