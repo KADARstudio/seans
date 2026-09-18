@@ -4,7 +4,7 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    - cron: '37 * * * *'
+    - cron: '37 */6 * * *'
 permissions:
   contents: read
 concurrency:
@@ -14,7 +14,7 @@ jobs:
   prepare:
     if: github.repository == 'KADARstudio/seans' && github.repository_id == '1376451444'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 20
     permissions:
       contents: write
       pages: read
@@ -27,42 +27,45 @@ jobs:
           node-version: '22'
       - name: Verify exact project before any work
         run: node scripts/check-project.cjs
-      - name: Fetch a fresh Polish subscription catalogue
-        run: python3 scripts/refresh_catalog.py
-      - name: Prepare accurate help text
-        run: python3 scripts/prepare-release.py
-      - name: Validate source and run 62 logic checks
+      - name: Refresh the complete paginated catalogue or retain a recent dated copy
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = 'schedule' ]; then
+            python3 scripts/refresh_catalog.py
+          else
+            python3 scripts/refresh_catalog.py --if-stale
+          fi
+      - name: Validate source and run logic and audio error checks
         run: |
           set -euo pipefail
           node scripts/check-project.cjs
           for file in docs/*.js; do node --check "$file"; done
           mkdir -p test-results
-          node --test tests/*.test.js | tee test-results/unit-tests.tap
+          npm test | tee test-results/unit-tests.tap
       - name: Install mobile browser engines
         if: github.event_name != 'schedule'
         run: |
           python3 -m pip install playwright==1.57.0
           python3 -m playwright install --with-deps chromium webkit
-      - name: Test the actual app in Chromium and WebKit
+      - name: Verify rewatch, actual media playback and viewport-sized controls
         if: github.event_name != 'schedule'
         run: python3 tests/mobile.py
-      - name: Publish only Seans catalogue and its checked help text
+      - name: Publish only Seans catalogue
         run: |
           test "$GITHUB_REPOSITORY" = 'KADARstudio/seans'
           test "$GITHUB_REPOSITORY_ID" = '1376451444'
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/catalog.json docs/app.js
+          git add docs/catalog.json
           if ! git diff --cached --quiet; then
-            git commit -m 'Refresh Seans PL catalogue and verified release help [skip ci]'
+            git commit -m 'Refresh Seans dated PL catalogue and coverage report [skip ci]'
             git pull --rebase origin main
             git push origin HEAD:main
           fi
-      - name: Verify independent public preview
+          echo "SEANS_PUBLIC_URL=https://raw.githack.com/KADARstudio/seans/$(git rev-parse HEAD)/docs/index.html" >> "$GITHUB_ENV"
+      - name: Verify the published revision through the independent public host
         if: github.event_name != 'schedule'
-        continue-on-error: true
-        env:
-          SEANS_PUBLIC_URL: https://raw.githack.com/KADARstudio/seans/main/docs/index.html
         run: python3 tests/mobile.py
       - name: Read Pages configuration without changing settings
         id: pages
