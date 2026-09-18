@@ -1,0 +1,114 @@
+name: Seans - katalog, testy i publikacja
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '37 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: seans-independent-site
+  cancel-in-progress: false
+jobs:
+  prepare:
+    if: github.repository == 'KADARstudio/seans' && github.repository_id == '1376451444'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: write
+      pages: read
+    outputs:
+      pages_enabled: ${{ steps.pages.outputs.enabled }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify exact project before any work
+        run: node scripts/check-project.cjs
+      - name: Fetch a fresh Polish subscription catalogue
+        run: python3 scripts/refresh_catalog.py
+      - name: Prepare accurate help text
+        run: python3 scripts/prepare-release.py
+      - name: Validate source and run 62 logic checks
+        run: |
+          set -euo pipefail
+          node scripts/check-project.cjs
+          for file in docs/*.js; do node --check "$file"; done
+          mkdir -p test-results
+          node --test tests/*.test.js | tee test-results/unit-tests.tap
+      - name: Install mobile browser engines
+        if: github.event_name != 'schedule'
+        run: |
+          python3 -m pip install playwright==1.57.0
+          python3 -m playwright install --with-deps chromium webkit
+      - name: Test the actual app in Chromium and WebKit
+        if: github.event_name != 'schedule'
+        run: python3 tests/mobile.py
+      - name: Publish only Seans catalogue and its checked help text
+        run: |
+          test "$GITHUB_REPOSITORY" = 'KADARstudio/seans'
+          test "$GITHUB_REPOSITORY_ID" = '1376451444'
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/catalog.json docs/app.js
+          if ! git diff --cached --quiet; then
+            git commit -m 'Refresh Seans PL catalogue and verified release help [skip ci]'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+      - name: Verify independent public preview
+        if: github.event_name != 'schedule'
+        continue-on-error: true
+        env:
+          SEANS_PUBLIC_URL: https://raw.githack.com/KADARstudio/seans/main/docs/index.html
+        run: python3 tests/mobile.py
+      - name: Read Pages configuration without changing settings
+        id: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mode=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq '.build_type' 2>/dev/null || true)
+          if [ "$mode" = 'workflow' ]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo 'GitHub Pages requires owner setup: Settings > Pages > Source > GitHub Actions.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Package the static app for Pages
+        if: steps.pages.outputs.enabled == 'true'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs
+      - name: Preserve test evidence and exact source
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seans-source-and-tests
+          path: |
+            docs/
+            scripts/
+            tests/
+            test-results/
+            project.json
+            README.md
+            package.json
+            AGENTS.md
+          retention-days: 7
+  deploy:
+    needs: prepare
+    if: needs.prepare.outputs.pages_enabled == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.publish.outputs.page_url }}
+    steps:
+      - name: Publish this repository's static app
+        id: publish
+        uses: actions/deploy-pages@v4
