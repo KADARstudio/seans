@@ -44,7 +44,7 @@ function beginRound(room) {
 }
 export function createRoom({ id, user, inviteHash, ids, services, catalogueAt }, now = Date.now()) {
   if (!UUID.test(id) || !UUID.test(user) || !/^[0-9a-f]{64}$/.test(inviteHash)) fail('INVALID_REQUEST', 400);
-  if (!Array.isArray(ids) || ids.length < 2 || ids.length > 104 || ids.some(x => !FILM.test(x)) || new Set(ids).size !== ids.length) fail('INVALID_POOL', 400);
+  if (!Array.isArray(ids) || ids.length < 2 || ids.length > 104 || ids.some(x => typeof x !== 'string' || !FILM.test(x)) || new Set(ids).size !== ids.length) fail('INVALID_POOL', 400);
   if (!Array.isArray(services) || !services.length || services.some(x => !SERVICES.includes(x))) fail('INVALID_SERVICES', 400);
   if (typeof catalogueAt !== 'string' || !Number.isFinite(Date.parse(catalogueAt)) || catalogueAt.length > 40) fail('INVALID_CATALOGUE', 400);
   return { version: 1, id, host: user, guest: null, inviteHash, createdAt: now, expiresAt: now + TTL_MS,
@@ -91,7 +91,7 @@ export function command(source, user, input, now = Date.now()) {
   if (prev?.lastOp === input.opId) return copy(source); // Same request after a lost acknowledgement.
   if (input.type === 'close') {
     const room = copy(source); room.closed = true; room.phase = 'closed'; room.bank = []; room.pool = [];
-    room.players = {}; room.candidates = []; room.inviteHash = null; room.revision++; return room;
+    room.players = {}; room.candidates = []; room.inviteHash = null; room.winner = null; room.matchedAt = null; room.services = []; room.catalogueAt = null; room.revision++; return room;
   }
   if (!prev || prev.seq !== input.seq || input.round !== source.round) fail('STALE_STATE');
   if (source.phase === 'matched' || source.phase === 'exhausted') fail('ROUND_FINISHED');

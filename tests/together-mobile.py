@@ -37,6 +37,10 @@ try:
    try:
     invitation=start();ok('One invite connects two independent browser contexts',a.evaluate('SeansTogether.status().role')=='a' and b.evaluate('SeansTogether.status().role')=='b')
     ok('Invitation secret removed from guest address',not b.evaluate('location.hash'))
+    try:
+     a.wait_for_function("Array.from(document.querySelectorAll('.duo-card img')).some(i=>i.complete&&i.naturalWidth>0)",timeout=12000)
+     row['realPostersLoaded']=True
+    except Exception:row['realPostersLoaded']=False
     a.screenshot(path=str(OUT/f'{engine}-together-duel.png'))
     a.evaluate('window.savedWinner=document.querySelectorAll(".duo-card")[0]')
     first=a.locator('.duo-card').first.get_attribute('data-film');rev=a.evaluate('SeansTogether.status().revision')
@@ -70,6 +74,7 @@ try:
     ok('One explicit yes is not a final',phase(a)=='confirming')
     b.locator(f'[data-duo="answer"][data-film="{candidate}"][data-accept="true"]').click();idle(b);wait_phase(a,'matched');idle(a)
     ok('Two explicit yes votes produce one identical result',a.locator('.duo-center h2').inner_text()==b.locator('.duo-center h2').inner_text())
+    ok('Final actions fit on the phone',a.evaluate("Array.from(document.querySelectorAll('.duo-watch a,.duo-center .secondary')).every(el=>el.getBoundingClientRect().bottom<=innerHeight)"))
     a.screenshot(path=str(OUT/f'{engine}-together-final.png'))
     a.reload();wait_phase(a,'matched');idle(a);ok('Confirmed result survives reload')
     ok('Local journal records chosen, not watched',a.evaluate("(()=>{const r=JSON.parse(localStorage.getItem('seans.prototype.v1.journal.v02'))[0];return r.mode==='together'&&!r.watchedAt&&!r.openedAt;})()"))
