@@ -1,0 +1,10 @@
+// Requires the ephemeral PostgreSQL CI service. Never run against a hosted or user database.
+import {test} from 'node:test';import assert from 'node:assert/strict';import {randomUUID} from 'node:crypto';
+import {postgresStore} from './room-test-store.mjs';import {createRoom,joinRoom} from '../supabase/functions/_shared/room-engine.mjs';
+const db=process.env.TEST_DATABASE_URL?postgresStore():null;
+const fresh=()=>createRoom({id:randomUUID(),user:randomUUID(),inviteHash:'a'.repeat(64),ids:['tm1','tm2'],services:['netflix'],catalogueAt:new Date().toISOString()});
+test('Real PostgreSQL keeps rooms and applies versioned writes',{skip:!db},async()=>{const r=fresh();await db.create(r);assert.deepEqual(await db.get(r.id),r);const n=joinRoom(r,randomUUID(),'a'.repeat(64));assert.equal(await db.cas(r.id,0,n),true);assert.equal(await db.cas(r.id,0,n),false);assert.deepEqual(await db.get(r.id),n);});
+test('Atomic concurrent SQL writes cannot both win',{skip:!db},async()=>{const r=fresh();await db.create(r);const n=joinRoom(r,randomUUID(),'a'.repeat(64));const results=await Promise.all([db.cas(r.id,0,n),db.cas(r.id,0,n)]);assert.equal(results.filter(Boolean).length,1);});
+test('anon and authenticated roles cannot read private tables or service RPC',{skip:!db},async()=>{for(const role of ['anon','authenticated']){await assert.rejects(db.query('select * from seans_private.rooms',role));await assert.rejects(db.query(`select public.seans_store_get('${randomUUID()}')`,role));await assert.rejects(db.query('select public.seans_cleanup_expired()',role));}});
+test('Real SQL quota refuses a sixth room per owner in one hour',{skip:!db},async()=>{const owner=randomUUID();for(let i=0;i<5;i++)await db.create({...fresh(),host:owner});await assert.rejects(db.create({...fresh(),host:owner}),/ROOM_LIMIT/);});
+test('SQL does not let a state update extend room expiry',{skip:!db},async()=>{const r=fresh();await db.create(r);const n=joinRoom(r,randomUUID(),'a'.repeat(64));n.expiresAt++;assert.equal(await db.cas(r.id,0,n),false);});

@@ -1,0 +1,83 @@
+name: Seans 0.4 isolated two-person acceptance
+on:
+  push:
+    branches: [feature/together-v04]
+    paths:
+      - 'docs/together*'
+      - 'docs/room-*'
+      - 'supabase/**'
+      - 'tests/room-*'
+      - 'tests/together-mobile.py'
+      - '.github/workflows/together-v04.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: seans-together-v04-check
+  cancel-in-progress: true
+jobs:
+  acceptance:
+    if: github.repository == 'KADARstudio/seans' && github.repository_id == '1376451444'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: local-ci-only
+          POSTGRES_DB: seans_rooms_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres -d seans_rooms_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:local-ci-only@127.0.0.1:5432/seans_rooms_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify project boundary and existing solo regression
+        run: |
+          set -euo pipefail
+          node scripts/check-project.cjs
+          mkdir -p test-results-v04
+          npm test > test-results-v04/solo-tests.tap
+          for f in docs/room-*.js docs/together.js supabase/functions/_shared/*.mjs; do node --check "$f"; done
+      - name: Prepare only the disposable local test database
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y postgresql-client
+          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -c 'create role anon nologin; create role authenticated nologin; create role service_role nologin;'
+          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/202609190001_seans_rooms.sql
+          psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/migrations/202609190001_seans_rooms.sql
+      - name: Check authoritative room logic, authentication boundary and PostgreSQL isolation
+        run: |
+          set -euo pipefail
+          node --test tests/room-*.test.mjs | tee test-results-v04/room-tests.tap
+      - name: Install two actual mobile browser engines
+        run: |
+          python -m pip install playwright==1.57.0
+          python -m playwright install --with-deps chromium webkit
+      - name: Two independent devices using the real handler and PostgreSQL
+        run: python tests/together-mobile.py
+      - name: Preserve exact test evidence without credentials or invitation links
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: seans-together-v04-evidence
+          path: |
+            test-results-v04/
+            docs/together.html
+            docs/together.css
+            docs/together.js
+            docs/room-config.js
+            docs/room-client.js
+            supabase/
+            tests/room-*.mjs
+            tests/together-mobile.py
+          retention-days: 7
