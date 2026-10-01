@@ -1,0 +1,44 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { randomUUID } from 'node:crypto';
+import { createRoom, joinRoom, command, snapshot, shortlist, TTL_MS } from '../supabase/functions/_shared/room-engine.mjs';
+const A=randomUUID(),B=randomUUID(),C=randomUUID(),ID=randomUUID(),H='a'.repeat(64),T=Date.now();
+const ids=Array.from({length:104},(_,i)=>'tm'+i);
+const fresh=(list=ids)=>createRoom({id:randomUUID(),user:A,inviteHash:H,ids:list,services:['netflix'],catalogueAt:new Date(T).toISOString()},T);
+const joined=(list=ids)=>joinRoom(fresh(list),B,H,T+1);
+function action(r,u,type,extra={}) { const p=snapshot(r,u,T+2);return {opId:randomUUID(),seq:p.self?.seq||0,round:r.round,type,...extra}; }
+function apply(r,u,type,extra={}) { return command(r,u,action(r,u,type,extra),T+2); }
+function finish(r,u) { let limit=0;while(!snapshot(r,u,T+2).self.done){if(++limit>30)throw Error('loop');r=apply(r,u,'pick',{filmId:snapshot(r,u,T+2).self.pair[0]});}return r; }
+const ready=()=>finish(finish(joined(),A),B);
+test('New room waits with exactly one host',()=>{const r=fresh();assert.equal(r.phase,'waiting');assert.equal(snapshot(r,A,T).joined,false);assert.equal(r.expiresAt-T,TTL_MS);});
+test('Same invite cannot add a third person',()=>{assert.throws(()=>joinRoom(joined(),C,H,T+2),/INVITE_UNAVAILABLE/);});
+test('Invalid invitation is refused',()=>{assert.throws(()=>joinRoom(fresh(),B,'b'.repeat(64),T+1),/INVITE_UNAVAILABLE/);});
+test('Joining again from same identity is idempotent',()=>{const r=joined();assert.deepEqual(joinRoom(r,B,H,T+2),r);});
+test('Own invitation cannot occupy both seats',()=>{const r=fresh();assert.equal(joinRoom(r,A,H,T+1).guest,null);});
+test('Joining starts two separate games using the same pool',()=>{const r=joined();assert.deepEqual([...r.players.a.deck].sort(),[...r.players.b.deck].sort());assert.equal(r.pool.length,13);});
+test('Outsider cannot read another room',()=>{assert.throws(()=>snapshot(joined(),C,T+2),/ROOM_UNAVAILABLE/);});
+test('Snapshot hides opponent votes, ids, deck and invite secret',()=>{const r=joined(),s=snapshot(r,A,T+2);assert.deepEqual(Object.keys(s.other).sort(),['decisions','done','next']);assert.equal(JSON.stringify(s).includes(H),false);assert.equal(JSON.stringify(s).includes(B),false);assert.equal(s.bank,undefined);assert.equal(s.host,undefined);});
+test('Selecting the right film keeps it on the right',()=>{let r=joined();const id=r.players.a.pair[1];r=apply(r,A,'pick',{filmId:id});assert.equal(r.players.a.pair[1],id);assert.equal(r.players.b.decisions,0);});
+test('State transitions do not mutate the input',()=>{const r=joined(),before=structuredClone(r);apply(r,A,'pick',{filmId:r.players.a.pair[0]});assert.deepEqual(r,before);});
+test('Repeated acknowledged action cannot add a second vote',()=>{let r=joined();const a=action(r,A,'pick',{filmId:r.players.a.pair[0]});r=command(r,A,a,T+2);assert.deepEqual(command(r,A,a,T+3),r);});
+test('Different action with stale version cannot apply to a new card',()=>{let r=joined();const a=action(r,A,'pick',{filmId:r.players.a.pair[0]});r=command(r,A,a,T+2);assert.throws(()=>command(r,A,{...a,opId:randomUUID()},T+3),/STALE_STATE/);});
+test('A fabricated film cannot be selected',()=>{const r=joined();assert.throws(()=>apply(r,A,'pick',{filmId:'tm999999999'}),/INVALID_FILM/);});
+test('A third person cannot submit a vote',()=>{const r=joined();assert.throws(()=>command(r,C,action(r,A,'skip'),T+2),/ROOM_UNAVAILABLE/);});
+test('Mark-seen is not a room command or a vote',()=>{const r=joined();assert.throws(()=>apply(r,A,'seen',{filmId:r.players.a.pair[0]}),/INVALID_COMMAND/);});
+test('Veto removes only its card and not a choice counter',()=>{let r=joined();const a=r.players.a.pair.slice();r=apply(r,A,'veto',{filmId:a[1]});assert.equal(r.players.a.pair[0],a[0]);assert.equal(r.players.a.decisions,0);assert.ok(r.players.a.vetoes.includes(a[1]));});
+test('Undo restores exact pair, vetoes and decision count',()=>{let r=joined(),p=structuredClone(r.players.a);r=apply(r,A,'veto',{filmId:p.pair[0]});r=apply(r,A,'undo');for(const k of ['pair','cursor','vetoes','decisions','events'])assert.deepEqual(r.players.a[k],p[k]);});
+test('Skip is a session veto, never invents a vote',()=>{let r=joined(),p=r.players.a.pair.slice();r=apply(r,A,'skip');assert.equal(r.players.a.decisions,0);assert.deepEqual(r.players.a.vetoes,p);});
+test('One completed participant does not generate a final',()=>{const r=finish(joined(),A);assert.equal(r.phase,'picking');assert.equal(r.winner,null);assert.equal(r.players.b.done,false);});
+test('Both completed participants see a shortlist, not a fake agreement',()=>{const r=ready();assert.equal(r.phase,'confirming');assert.equal(r.candidates.length,3);assert.equal(r.winner,null);});
+test('A veto from either side excludes a film from the shortlist',()=>{let r=joined();const id=r.players.a.pair[0];r=apply(r,A,'veto',{filmId:id});r=finish(finish(r,A),B);assert.ok(!r.candidates.includes(id));});
+test('One yes never creates a match',()=>{let r=ready();r=apply(r,A,'answer',{filmId:r.candidates[0],accept:true});assert.equal(r.phase,'confirming');assert.equal(r.winner,null);});
+test('A yes and a no never create a match',()=>{let r=ready(),id=r.candidates[0];r=apply(r,A,'answer',{filmId:id,accept:true});r=apply(r,B,'answer',{filmId:id,accept:false});assert.notEqual(r.phase,'matched');});
+test('Two yes votes for DIFFERENT films never create a match',()=>{let r=ready();r=apply(r,A,'answer',{filmId:r.candidates[0],accept:true});r=apply(r,B,'answer',{filmId:r.candidates[1],accept:true});assert.equal(r.winner,null);});
+test('Only two explicit yes votes for the SAME film create a match',()=>{let r=ready(),id=r.candidates[0];r=apply(r,A,'answer',{filmId:id,accept:true});r=apply(r,B,'answer',{filmId:id,accept:true});assert.equal(r.phase,'matched');assert.equal(r.winner,id);});
+test('Confirmed match cannot be overwritten by a late vote',()=>{let r=ready(),id=r.candidates[0];r=apply(r,A,'answer',{filmId:id,accept:true});r=apply(r,B,'answer',{filmId:id,accept:true});assert.throws(()=>apply(r,A,'answer',{filmId:id,accept:false}),/ROUND_FINISHED/);});
+test('No candidate survives rejection: both choose whether to start again',()=>{let r=ready(),oldPool=r.pool.slice();for(const id of [...r.candidates])r=apply(r,A,'answer',{filmId:id,accept:false});assert.equal(r.phase,'no-match');r=apply(r,A,'again');assert.equal(r.phase,'no-match');r=apply(r,B,'again');assert.equal(r.phase,'picking');assert.equal(r.round,2);assert.ok(!r.pool.some(x=>oldPool.includes(x)));});
+test('Empty pool cannot loop forever',()=>{let r=joined(ids.slice(0,2));r=apply(r,A,'skip');r=apply(r,B,'skip');assert.equal(r.phase,'no-match');r=apply(r,A,'again');r=apply(r,B,'again');assert.equal(r.phase,'exhausted');});
+test('Room expires even if physical cleanup has not executed',()=>{assert.throws(()=>snapshot(joined(),A,T+TTL_MS),/ROOM_UNAVAILABLE/);});
+test('Either person can close and erase live votes and invitation',()=>{const r=apply(joined(),B,'close');assert.equal(r.closed,true);assert.deepEqual(r.players,{});assert.deepEqual(r.bank,[]);assert.equal(r.inviteHash,null);assert.throws(()=>snapshot(r,A,T+3),/ROOM_UNAVAILABLE/);});
+test('Reject duplicate and unbounded pools',()=>{assert.throws(()=>fresh(['tm1','tm1']),/INVALID_POOL/);assert.throws(()=>fresh(Array.from({length:105},(_,i)=>'tm'+i)),/INVALID_POOL/);});
+test('An exhausted last candidate is NOT automatically a chosen film',()=>{let r=joined(ids.slice(0,3));r=apply(r,A,'skip');r=apply(r,B,'skip');assert.notEqual(r.phase,'matched');assert.equal(r.winner,null);});
